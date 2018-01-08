@@ -61,7 +61,6 @@
             vm.isOncStaff = authService.isOncStaff();
             vm.tab = 'cp';
             vm.activityRange = { range: 60 };
-            vm.questionableRange = 0;
             var start = new Date();
             var end = new Date();
             start.setDate(end.getDate() - vm.activityRange.range + 1); // offset to account for inclusion of endDate in range
@@ -107,7 +106,9 @@
                 endDate: angular.copy(vm.activityRange.endDate),
             };
             vm.refreshActivity(true);
-            vm.loadApiKeys();
+            if (vm.isChplAdmin || vm.isOncStaff) {
+                vm.loadApiKeys();
+            }
             vm.filename = 'Reports_' + new Date().getTime() + '.csv';
         }
 
@@ -122,10 +123,12 @@
                 vm.refreshProduct();
                 vm.refreshAcb();
                 vm.refreshAtl();
-                vm.refreshAnnouncement();
-                vm.refreshUser();
-                vm.refreshApi();
-                vm.refreshApiKeyUsage();
+                if (vm.isChplAdmin || vm.isOncStaff) {
+                    vm.refreshAnnouncement();
+                    vm.refreshUser();
+                    vm.refreshApi();
+                    vm.refreshApiKeyUsage();
+                }
             } else {
                 switch (vm.workType) {
                 case '':
@@ -134,7 +137,6 @@
                 case 'cp-surveillance':
                 case 'cp-cap':
                 case 'cp-other':
-                case 'cp-questionable':
                     if (vm.productId) {
                         vm.singleCp();
                     } else {
@@ -176,7 +178,6 @@
                     vm.displayedCertifiedProductsSurveillance = [].concat(vm.searchedCertifiedProductsSurveillance);
                     vm.displayedCertifiedProductsCAP = [].concat(vm.searchedCertifiedProductsCAP);
                     vm.displayedCertifiedProducts = [].concat(vm.searchedCertifiedProducts);
-                    vm.displayedCertifiedProductsQuestionable = [].concat(vm.searchedCertifiedProductsQuestionable);
                 });
         }
 
@@ -300,14 +301,23 @@
                     vm.displayedCertifiedProductsSurveillance = [].concat(vm.searchedCertifiedProductsSurveillance);
                     vm.displayedCertifiedProductsCAP = [].concat(vm.searchedCertifiedProductsCAP);
                     vm.displayedCertifiedProducts = [].concat(vm.searchedCertifiedProducts);
-                    vm.displayedCertifiedProductsQuestionable = [].concat(vm.searchedCertifiedProductsQuestionable);
                 });
         }
 
         function validDates (key) {
-            var diffDays = Math.ceil((vm.activityRange[key].endDate.getTime() - vm.activityRange[key].startDate.getTime()) / (1000 * 60 * 60 * 24));
+            var utcEnd = Date.UTC(
+                vm.activityRange[key].endDate.getFullYear(),
+                vm.activityRange[key].endDate.getMonth(),
+                vm.activityRange[key].endDate.getDate()
+            );
+            var utcStart = Date.UTC(
+                vm.activityRange[key].startDate.getFullYear(),
+                vm.activityRange[key].startDate.getMonth(),
+                vm.activityRange[key].startDate.getDate()
+            );
+            var diffDays = Math.floor((utcEnd - utcStart) / (1000 * 60 * 60 * 24));
             if (key === 'listing' && vm.productId) {
-                return (vm.activityRange.listing.startDate.getTime() < vm.activityRange.listing.endDate.getTime());
+                return (utcStart < utcEnd);
             }
             return (0 <= diffDays && diffDays < vm.activityRange.range);
         }
@@ -362,10 +372,8 @@
                 surveillance: [],
                 cap: [],
                 other: [],
-                questionable: [],
             };
             var change;
-            var questionable;
 
             var certChanges, chplNum, cpId, cpNum, i, j, k, link;
             for (i = 0; i < data.length; i++) {
@@ -373,7 +381,6 @@
                     date: data[i].activityDate,
                     newId: data[i].id,
                     acb: '',
-                    questionable: false,
                 };
                 activity.friendlyActivityDate = new Date(activity.date).toISOString().substring(0, 10);
                 if (data[i].description === 'Created a certified product') {
@@ -395,7 +402,6 @@
                     activity.certificationEdition = data[i].newData.certificationEdition.name;
                     activity.certificationDate = data[i].newData.certificationDate;
                     activity.friendlyCertificationDate = new Date(activity.certificationDate).toISOString().substring(0, 10);
-                    questionable = data[i].activityDate > data[i].newData.certificationDate + (vm.questionableRange * 24 * 60 * 60 * 1000);
                     activity.details = [];
                     var statusChange = nestedCompare(data[i].originalData, data[i].newData, 'certificationStatus', 'name', 'Certification Status');
                     if (statusChange) {
@@ -403,13 +409,7 @@
                         statusActivity.details = statusChange;
                         output.status.push(statusActivity);
 
-                        // count status change as questionable
-                        activity.details.push('<span class="bg-danger"><strong>' + statusChange + '</strong></span>');
-                        activity.questionable = true;
-                    }
-                    if (data[i].newData.certificationEdition.name === '2011') {
-                        activity.action = '<span class="bg-danger">' + activity.action + '</span>';
-                        activity.questionable = true;
+                        activity.details.push(statusChange);
                     }
                     for (j = 0; j < simpleCpFields.length; j++) {
                         change = compareItem(data[i].originalData, data[i].newData, simpleCpFields[j].key, simpleCpFields[j].display, simpleCpFields[j].filter);
@@ -418,12 +418,7 @@
                     for (j = 0; j < nestedKeys.length; j++) {
                         change = nestedCompare(data[i].originalData, data[i].newData, nestedKeys[j].key, nestedKeys[j].subkey, nestedKeys[j].display, nestedKeys[j].filter);
                         if (change) {
-                            if (nestedKeys[j].questionable && questionable) {
-                                activity.questionable = true;
-                                activity.details.push('<span class="bg-danger"><strong>' + change + '</strong></span>');
-                            } else {
-                                activity.details.push(change);
-                            }
+                            activity.details.push(change);
                         }
                     }
                     var accessibilityStandardsKeys = [];
@@ -431,14 +426,12 @@
                     for (j = 0; j < accessibilityStandards.length; j++) {
                         activity.details.push('Accessibility Standard "' + accessibilityStandards[j].name + '" changes<ul>' + accessibilityStandards[j].changes.join('') + '</ul>');
                     }
-                    certChanges = compareCerts(data[i].originalData.certificationResults, data[i].newData.certificationResults, questionable);
+                    certChanges = compareCerts(data[i].originalData.certificationResults, data[i].newData.certificationResults);
                     for (j = 0; j < certChanges.length; j++) {
-                        if (certChanges[j].questionable) { activity.questionable = true; }
                         activity.details.push('Certification "' + certChanges[j].number + '" changes<ul>' + certChanges[j].changes.join('') + '</ul>');
                     }
-                    var cqmChanges = compareCqms(data[i].originalData.cqmResults, data[i].newData.cqmResults, questionable);
+                    var cqmChanges = compareCqms(data[i].originalData.cqmResults, data[i].newData.cqmResults);
                     for (j = 0; j < cqmChanges.length; j++) {
-                        if (cqmChanges[j].questionable) { activity.questionable = true; }
                         activity.details.push('CQM "' + cqmChanges[j].cmsId + '" changes<ul>' + cqmChanges[j].changes.join('') + '</ul>');
                     }
                     if (typeof(data[i].originalData.ics) === 'object' &&
@@ -468,7 +461,7 @@
                     if (data[i].originalData.sed &&
                         data[i].newData.sed) {
                         var sedChanges = _compareSed(data[i].originalData.sed, data[i].newData.sed);
-                        if (sedChanges) {
+                        if (sedChanges && sedChanges.length > 0) {
                             activity.details.push('SED Changes<ul>' + sedChanges.join('') + '</ul>');
                         }
                     }
@@ -614,30 +607,25 @@
                     activity.action = data[i].description;
                     output.other.push(activity);
                 }
-
-                if (activity.questionable) {
-                    output.questionable.push(activity);
-                }
             }
             vm.searchedCertifiedProductsUpload = output.upload;
             vm.searchedCertifiedProductsStatus = output.status;
             vm.searchedCertifiedProductsSurveillance = output.surveillance;
             vm.searchedCertifiedProductsCAP = output.cap;
             vm.searchedCertifiedProducts = output.other;
-            vm.searchedCertifiedProductsQuestionable = output.questionable;
         }
 
-        function compareCerts (prev, curr, questionable) {
+        function compareCerts (prev, curr) {
             var ret = [];
             var change;
             var certKeys = [
                 {key: 'apiDocumentation', display: 'API Documentation'},
-                {key: 'g1Success', display: 'Certified to G1', questionable: true},
-                {key: 'g2Success', display: 'Certified to G2', questionable: true},
-                {key: 'gap', display: 'GAP Tested', questionable: true},
+                {key: 'g1Success', display: 'Certified to G1'},
+                {key: 'g2Success', display: 'Certified to G2'},
+                {key: 'gap', display: 'GAP Tested'},
                 {key: 'privacySecurityFramework', display: 'Privacy &amp; Security Framework'},
                 {key: 'sed', display: 'SED tested'},
-                {key: 'success', display: 'Successful', questionable: true},
+                {key: 'success', display: 'Successful'},
             ];
             var i, j;
             prev.sort(function (a,b) {return (a.number > b.number) ? 1 : ((b.number > a.number) ? -1 : 0);} );
@@ -647,12 +635,7 @@
                 for (j = 0; j < certKeys.length; j++) {
                     change = compareItem(prev[i], curr[i], certKeys[j].key, certKeys[j].display, certKeys[j].filter);
                     if (change) {
-                        if (certKeys[j].questionable && questionable) {
-                            obj.questionable = true;
-                            obj.changes.push('<li class="bg-danger"><strong>' + change + '</strong></li>');
-                        } else {
-                            obj.changes.push('<li>' + change + '</li>');
-                        }
+                        obj.changes.push('<li>' + change + '</li>');
                     }
                 }
                 var measures = utilService.arrayCompare(prev[i].g1MacraMeasures,curr[i].g1MacraMeasures);
@@ -695,15 +678,9 @@
                 for (j = 0; j < addlSw.length; j++) {
                     obj.changes.push('<li>Relied Upon Software "' + addlSw[j].name + '" changes<ul>' + addlSw[j].changes.join('') + '</ul></li>');
                 }
-                var testProceduresKeys = [];
-                var testProcedures = compareArray(prev[i].testProcedures, curr[i].testProcedures, testProceduresKeys, 'testProcedureVersion');
-                for (j = 0; j < testProcedures.length; j++) {
-                    obj.changes.push('<li>Test Procedure Version "' + testProcedures[j].name + '" changes<ul>' + testProcedures[j].changes.join('') + '</ul></li>');
-                }
-                var testDataUsedKeys = [{key: 'alteration', display: 'Data Alteration'}];
-                var testDataUsed = compareArray(prev[i].testDataUsed, curr[i].testDataUsed, testDataUsedKeys, 'version');
-                for (j = 0; j < testDataUsed.length; j++) {
-                    obj.changes.push('<li>Test Data Version "' + testDataUsed[j].name + '" changes<ul>' + testDataUsed[j].changes.join('') + '</ul></li>');
+                var testChanges = _compareTestStuff(prev[i], curr[i]);
+                if (testChanges) {
+                    obj.changes = obj.changes.concat(testChanges);
                 }
                 var testFunctionalityKeys = [];
                 var testFunctionality = compareArray(prev[i].testFunctionality, curr[i].testFunctionality, testFunctionalityKeys, 'number');
@@ -855,6 +832,88 @@
             return ret;
         }
 
+        function _compareTestStuff (prev, curr) {
+            var ret = [];
+            if (prev.testProcedures && curr.testProcedures) {
+                prev.testProcedures.forEach(function (pre) {
+                    if (pre.testProcedure) {
+                        curr.testProcedures.forEach(function (cur) {
+                            if (!cur.found && !pre.found &&
+                                pre.testProcedure.name === cur.testProcedure.name &&
+                                pre.testProcedureVersion === cur.testProcedureVersion ) {
+                                pre.found = true;
+                                cur.found = true;
+                            }
+                        });
+                    }
+                });
+                prev.testProcedures.forEach(function (pre) {
+                    if (pre.testProcedure) {
+                        curr.testProcedures.forEach(function (cur) {
+                            if (!cur.found && !pre.found && pre.testProcedure.name === cur.testProcedure.name ) {
+                                pre.found = true;
+                                cur.found = true;
+                                ret.push('<li>Test Procedure "' + pre.testProcedure.name + '" version changed from "' + pre.testProcedureVersion + '" to "' + cur.testProcedureVersion + '"</li>');
+                            }
+                        })
+                        if (!pre.found) {
+                            ret.push('<li>Test Procedure "' + pre.testProcedure.name + '" was removed</li>');
+                        }
+                    }
+                });
+                curr.testProcedures.forEach(function (cur) {
+                    if (cur.testProcedure) {
+                        if (!cur.found) {
+                            ret.push('<li>Test Procedure "' + cur.testProcedure.name + '" was added</li>');
+                        }
+                    }
+                });
+            }
+            if (prev.testDataUsed && curr.testDataUsed) {
+                prev.testDataUsed.forEach(function (pre) {
+                    if (pre.testData) {
+                        curr.testDataUsed.forEach(function (cur) {
+                            if (!cur.found && !pre.found &&
+                                pre.testData.name === cur.testData.name &&
+                                pre.version === cur.version &&
+                                pre.alteration === cur.alteration) {
+                                pre.found = true;
+                                cur.found = true;
+                            }
+                        });
+                    }
+                });
+                prev.testDataUsed.forEach(function (pre) {
+                    if (pre.testData) {
+                        curr.testDataUsed.forEach(function (cur) {
+                            if (!cur.found && !pre.found &&
+                                pre.testData.name === cur.testData.name) {
+                                pre.found = true;
+                                cur.found = true;
+                                if (pre.version !== cur.version) {
+                                    ret.push('<li>Test Data "' + pre.testData.name + '" version changed from "' + pre.version + '" to "' + cur.version + '"</li>');
+                                }
+                                if (pre.alteration !== cur.alteration) {
+                                    ret.push('<li>Test Data "' + pre.testData.name + '" alteration changed from "' + pre.alteration + '" to "' + cur.alteration + '"</li>');
+                                }
+                            }
+                        })
+                        if (!pre.found) {
+                            ret.push('<li>Test Data "' + pre.testData.name + '" was removed</li>');
+                        }
+                    }
+                });
+                curr.testDataUsed.forEach(function (cur) {
+                    if (cur.testData) {
+                        if (!cur.found) {
+                            ret.push('<li>Test Data "' + cur.testData.name + '" was added</li>');
+                        }
+                    }
+                });
+            }
+            return ret;
+        }
+
         function compareSedTasks (prev, curr) {
             var ret = [];
             var change;
@@ -915,7 +974,7 @@
             return ret;
         }
 
-        function compareCqms (prev, curr, questionable) {
+        function compareCqms (prev, curr) {
             var ret = [];
             var change;
             prev.sort(function (a,b) {return (a.cmsId > b.cmsId) ? 1 : ((b.cmsId > a.cmsId) ? -1 : 0);} );
@@ -925,12 +984,7 @@
                 var obj = { cmsId: curr[i].cmsId, changes: [] };
                 change = compareItem(prev[i], curr[i], 'success', 'Success');
                 if (change) {
-                    if (questionable) {
-                        obj.questionable = true;
-                        obj.changes.push('<li class="bg-danger"><strong>' + change + '</strong></li>');
-                    } else {
-                        obj.changes.push('<li>' + change + '</li>');
-                    }
+                    obj.changes.push('<li>' + change + '</li>');
                 }
                 for (j = 0; j < prev[i].allVersions.length; j++) {
                     if (prev[i].successVersions.indexOf(prev[i].allVersions[j]) < 0 && curr[i].successVersions.indexOf(prev[i].allVersions[j]) >= 0) {

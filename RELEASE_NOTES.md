@@ -3,10 +3,84 @@
 ## Version TBD
 _Date TBD_
 
+### Minor features
+* Update messaging wrt surveillance activity upload
+
+## OCD-1966
+* Allow editing of certfication status history
+  * Including "Reason for Status Change"
+
+---
+
+## Version 9.11.0
+_2 January 2018_
+
+### Minor features
+* Added ids to some buttons/links
+* Take out Questionable Activity Certified Products reports page
+* Require ICS Source for 2015 Listings with ICS=true during edit
+
+### Bugs fixed
+* Removed duplicate 'external link' disclaimer from Transparency Attestation collection
+
+---
+
+## Version 9.10.0
+_18 December 2017_
+
+### New features
+* ROLE management
+  * Change ROLE_ACB_ADMIN to ROLE_ACB
+  * Change ROLE_ATL_ADMIN to ROLE_ATL
+  * Remove ROLE_ACB_STAFF
+  * Remove ROLE_ATL_STAFF
+* Removed "Reports" from navigation for ROLE_ATL
+
+### Bugs fixed
+* Editing UCD Processes works
+* Allow confirmation of "new" Values during Confirm
+  * QMS Standards
+  * UCD Processes
+
+---
+
+## Version 9.9.0
+_5 December 2017_
+
+### New features
+* Display / edit Test Data & Test Procedures
+  * Updated activity reports to parse TD & TP as well
+
+### Bugs fixed
+* Re-enabled SED Task / Participant editing when criteria added with SED
+
+---
+
+## Version 9.8.1
+_20 November 2017_
+
+### Bugs fixed
+* Fixed issue with Report activity date range spanning DST boundaries
+
+---
+
+##Version 9.8.0
+_6 November 2017_
+
+### New features
+* Add "2015 SED Products" Collection to shortcuts
+* Includes download all SED details button
+
+### Text changes
+* Usability Report -> Full Usability Report
+
+---
+
+## Version 9.7.0
+_23 October 2017_
+
 ### New features
 * Incorporate upload-template-version errors & warnings
-* Add "2015 SED Products" Collection to shortcuts
-* Add download all SED details button to SED collection page
 
 ### Bug fixed
 * Fixed "Save as Developer Information" to work again
